@@ -9,7 +9,7 @@
 <body>
     <header>
         <h1>불상 밝히기 후원 프로젝트</h1>
-        <p>어둠 속에 있는 불상을 밝혀주세요! 당신의 이름으로 영원히 빛날 것입니다.</p>
+        <br>어둠 속에 있는 불상을 밝혀주세요! 당신의 이름으로 영원히 빛날 것입니다.</br>
     </header>
 
     <main>
@@ -18,18 +18,17 @@
         </div>
     </main>
 
-        <div id="messageBox" class="message-box"></div>
-
-    <div id="paymentModal" class="modal">
+        <div id="paymentModal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
             <div id="modalContentDynamic">
-                            </div>
+            </div>
         </div>
     </div>
 
     <footer>
         <p>&copy; 2025 불상 밝히기 프로젝트. 모든 권리 보유.</p>
+                  카카오뱅크 3333-14-1779040 최민근
     </footer>
 
 <script type="module">
@@ -37,23 +36,32 @@
 
     const supabaseUrl = 'https://wrhrhdyaadvdyjztldzv.supabase.co';
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyaHJoZHlhYWR2ZHlqenRsZHp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQwMzAyOTksImV4cCI6MjA2OTYwNjI5OX0.8ZFpYa2yP1cssRv0BKLg3CZxl2Exc_mWRJURUhE7M9A';
-    
+   
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    
-    function showMessageBox(message) {
-        const messageBox = document.getElementById('messageBox');
-        messageBox.textContent = message;
-        messageBox.style.opacity = '1';
-        messageBox.style.transform = 'translateY(0)';
-        setTimeout(() => {
-            messageBox.style.opacity = '0';
-            messageBox.style.transform = 'translateY(20px)';
-        }, 3000);
-    }
-
+   
     const buddhaGrid = document.querySelector('.buddha-grid');
     const paymentModal = document.getElementById('paymentModal');
     const closeButton = document.querySelector('.close-button');
+    const modalContentDynamic = document.getElementById('modalContentDynamic');
+
+    // 팝업창을 닫는 공통 함수
+    function closeModal() {
+        paymentModal.style.display = 'none';
+    }
+    
+    // 후원 성공 메시지 팝업창을 표시하는 함수
+    function showSuccessModal() {
+        modalContentDynamic.innerHTML = `
+            <h2>후원 성공</h2>
+            <p class="modal-message">불상이 성공적으로 밝혀졌습니다!</p>
+            <button class="donate-button close-modal-button">닫기</button>
+        `;
+        paymentModal.style.display = 'block';
+        document.querySelector('.close-modal-button').addEventListener('click', () => {
+            closeModal();
+            fetchAndRenderBuddhas();
+        });
+    }
 
     async function fetchAndRenderBuddhas() {
         try {
@@ -72,7 +80,34 @@
             }
 
             buddhaGrid.innerHTML = '';
-            
+           
+            const today = new Date();
+
+            const buddhasToRevert = allBuddhas.filter(buddha => {
+                if (buddha.isColored && buddha.donationDate) {
+                    const donationDate = new Date(buddha.donationDate);
+                    const oneMonthLater = new Date(donationDate);
+                    oneMonthLater.setDate(donationDate.getDate() + 30);
+                    return today > oneMonthLater;
+                }
+                return false;
+            });
+
+            if (buddhasToRevert.length > 0) {
+                for (const buddha of buddhasToRevert) {
+                    await supabase
+                        .from('buddhas')
+                        .update({
+                            isColored: false,
+                            donatorName: null,
+                            donationDate: null
+                        })
+                        .eq('id', buddha.id);
+                }
+                fetchAndRenderBuddhas();
+                return;
+            }
+
             allBuddhas.forEach(buddha => {
                 const buddhaItem = document.createElement('div');
                 buddhaItem.classList.add('buddha-item');
@@ -100,13 +135,18 @@
                 buddhaItem.appendChild(donatorNameSpan);
 
                 buddhaItem.addEventListener('click', () => {
-                    const modalContent = document.getElementById('modalContentDynamic');
-                    modalContent.innerHTML = '';
+                    
+                    modalContentDynamic.innerHTML = '';
 
                     if (!buddha.isColored) {
-                        modalContent.innerHTML = `
+                        modalContentDynamic.innerHTML = `
                             <h2>불상 선택 및 후원</h2>
                             <p class="modal-message">선택하신 불상에 1불 후원하고 이름을 새겨주세요.</p>
+                                <div class="account-info">
+                                    <p><b>후원 계좌 정보</b></p>
+                                    <p>카카오뱅크 3333-14-1779040</p>
+                                    <p>예금주: 최민근</p>
+                                </div>
                             <form id="paymentFormModal">
                                 <input type="hidden" id="selectedBuddhaId" value="${buddha.id}">
                                 <label for="donatorName">후원자 이름:</label>
@@ -121,8 +161,14 @@
                             const donatorName = document.getElementById('donatorName').value.trim();
 
                             if (!donatorName) {
-                                showMessageBox('이름을 입력해주세요.');
-                                return;
+                                // alert 대신 modalContentDynamic에 메시지를 표시하는 방식으로 변경
+                                modalContentDynamic.innerHTML = `
+                                    <h2>오류 발생</h2>
+                                    <p class="modal-message">이름을 입력해주세요.</p>
+                                    <button class="donate-button close-modal-button">닫기</button>
+                                `;
+                                document.querySelector('.close-modal-button').addEventListener('click', closeModal);
+                                return;
                             }
 
                             try {
@@ -139,24 +185,26 @@
                                     throw error;
                                 }
 
-                                showMessageBox('불상이 성공적으로 밝혀졌습니다! (임시 기능)');
-                                paymentModal.style.display = 'none';
-                                await fetchAndRenderBuddhas();
+                                closeModal();
+                                showSuccessModal();
                             } catch (error) {
                                 console.error('불상 업데이트 중 오류 발생 (임시):', error);
-                                showMessageBox(`불상 업데이트 중 오류가 발생했습니다. 다시 시도해주세요. 오류: ${error.message}`);
+                                modalContentDynamic.innerHTML = `
+                                    <h2>오류 발생</h2>
+                                    <p class="modal-message">불상 업데이트 중 오류가 발생했습니다. 다시 시도해주세요. 오류: ${error.message}</p>
+                                    <button class="donate-button close-modal-button">닫기</button>
+                                `;
+                                document.querySelector('.close-modal-button').addEventListener('click', closeModal);
+                                paymentModal.style.display = 'block';
                             }
                         });
                     } else {
-                        // 이미 후원된 불상일 경우
-                        modalContent.innerHTML = `
+                        modalContentDynamic.innerHTML = `
                             <h2>이미 후원된 불상입니다</h2>
                             <p class="modal-message">이 불상은 이미 <b>${buddha.donatorName}</b>님께서 밝혀주셨습니다. <br><br>다른 불상에 후원해 주세요.</p>
                             <button class="donate-button close-modal-button">닫기</button>
                         `;
-                        document.querySelector('.close-modal-button').addEventListener('click', () => {
-                            paymentModal.style.display = 'none';
-                        });
+                        document.querySelector('.close-modal-button').addEventListener('click', closeModal);
                     }
                     paymentModal.style.display = 'block';
                 });
@@ -168,13 +216,11 @@
         }
     }
 
-    closeButton.addEventListener('click', () => {
-        paymentModal.style.display = 'none';
-    });
+    closeButton.addEventListener('click', closeModal);
 
     window.addEventListener('click', (event) => {
         if (event.target == paymentModal) {
-            paymentModal.style.display = 'none';
+            closeModal();
         }
     });
 
