@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>불상 밝히기 프로젝트</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>불상 밝히기 후원 프로젝트</h1>
+        <br>어둠 속에 있는 불상을 밝혀주세요! 당신의 이름으로 영원히 빛날 것입니다.</br>
+    </header>
+
+    <main>
+        <div class="buddha-grid">
+            <p>불상 데이터를 불러오는 중...</p>
+        </div>
+    </main>
+
+        <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="modalContentDynamic">
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 불상 밝히기 프로젝트. 모든 권리 보유.</p>
+                  토스뱅크 1000-0296-6214 최$근
+    </footer>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    const supabaseUrl = 'https://wrhrhdyaadvdyjztldzv.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyaHJoZHlhYWR2ZHlqenRsZHp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQwMzAyOTksImV4cCI6MjA2OTYwNjI5OX0.8ZFpYa2yP1cssRv0BKLg3CZxl2Exc_mWRJURUhE7M9A';
+   
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+   
+    const buddhaGrid = document.querySelector('.buddha-grid');
+    const paymentModal = document.getElementById('paymentModal');
+    const closeButton = document.querySelector('.close-button');
+    const modalContentDynamic = document.getElementById('modalContentDynamic');
+
+    // 팝업창을 닫는 공통 함수
+    function closeModal() {
+        paymentModal.style.display = 'none'; 
+    }
+    
+    // 후원 성공 메시지 팝업창을 표시하는 함수
+    function showSuccessModal() {
+        modalContentDynamic.innerHTML = `
+            <h2>후원 성공</h2>
+            <p class="modal-message">불상이 성공적으로 밝혀졌습니다!</p>
+            <button class="donate-button close-modal-button">닫기</button>
+        `;
+        paymentModal.style.display = 'block';
+        document.querySelector('.close-modal-button').addEventListener('click', () => {
+            closeModal();
+            fetchAndRenderBuddhas();
+        });
+    }
+
+    async function fetchAndRenderBuddhas() {
+        try {
+            const { data: allBuddhas, error } = await supabase
+                .from('buddhas')
+                .select('*')
+                .order('id', { ascending: true });
+
+            if (error) {
+                throw error;
+            }
+
+            if (!allBuddhas || allBuddhas.length === 0) {
+                buddhaGrid.innerHTML = '<p>아직 불상 데이터가 없습니다. Supabase에 데이터를 추가해주세요!</p>';
+                return;
+            }
+
+            buddhaGrid.innerHTML = '';
+           
+            const today = new Date();
+
+            const buddhasToRevert = allBuddhas.filter(buddha => {
+                if (buddha.isColored && buddha.donationDate) {
+                    const donationDate = new Date(buddha.donationDate);
+                    const oneMonthLater = new Date(donationDate);
+                    oneMonthLater.setDate(donationDate.getDate() + 30);
+                    return today > oneMonthLater;
+                }
+                return false;
+            });
+
+            if (buddhasToRevert.length > 0) {
+                for (const buddha of buddhasToRevert) {
+                    await supabase
+                        .from('buddhas')
+                        .update({
+                            isColored: false,
+                            donatorName: null,
+                            donationDate: null
+                        })
+                        .eq('id', buddha.id);
+                }
+                fetchAndRenderBuddhas();
+                return;
+            }
+
+            allBuddhas.forEach(buddha => {
+                const buddhaItem = document.createElement('div');
+                buddhaItem.classList.add('buddha-item');
+                buddhaItem.dataset.id = buddha.id;
+
+                const imageUrl = buddha.isColored
+                    ? buddha.imageColor
+                    : buddha.imageBw;
+
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = `불상 ${buddha.id}`;
+
+                const donatorNameSpan = document.createElement('span');
+                donatorNameSpan.classList.add('donator-name');
+                donatorNameSpan.textContent = buddha.donatorName ? `후원: ${buddha.donatorName}` : '';
+
+                if (buddha.isColored) {
+                    buddhaItem.classList.add('colored', 'glow');
+                } else {
+                    buddhaItem.classList.add('greyscale');
+                }
+
+                buddhaItem.appendChild(img);
+                buddhaItem.appendChild(donatorNameSpan);
+
+                buddhaItem.addEventListener('click', () => {
+                    
+                    modalContentDynamic.innerHTML = '';
+
+                    if (!buddha.isColored) {
+                        modalContentDynamic.innerHTML = `
+                            <h2>불상 선택 및 후원</h2>
+                            <p class="modal-message">선택하신 불상에 후원하고 이름을 새겨주세요.</p>
+                                <div class="account-info">
+                                    <p><b>후원 계좌 정보</b></p>
+                                    <p>토스뱅크 1000-0296-6214</p>
+                                    <p>예금주: 최$근</p>
+                                </div>
+                            <form id="paymentFormModal">
+                                <input type="hidden" id="selectedBuddhaId" value="${buddha.id}">
+                                <label for="donatorName">후원자 이름:</label>
+                                <input type="text" id="donatorName" placeholder="당신의 이름을 입력해주세요" required>
+                                <button type="submit" class="donate-button">후원하고 불상 밝히기</button>
+                            </form>
+                        `;
+                        const newPaymentForm = document.getElementById('paymentFormModal');
+                        newPaymentForm.addEventListener('submit', async (event) => {
+                            event.preventDefault();
+                            const buddhaId = document.getElementById('selectedBuddhaId').value;
+                            const donatorName = document.getElementById('donatorName').value.trim();
+
+                            if (!donatorName) {
+                                // alert 대신 modalContentDynamic에 메시지를 표시하는 방식으로 변경
+                                modalContentDynamic.innerHTML = `
+                                    <h2>오류 발생</h2>
+                                    <p class="modal-message">이름을 입력해주세요.</p>
+                                    <button class="donate-button close-modal-button">닫기</button>
+                                `;
+                                document.querySelector('.close-modal-button').addEventListener('click', closeModal);
+                                return;
+                            }
+
+                            try {
+                                const { data, error } = await supabase
+                                    .from('buddhas')
+                                    .update({
+                                        isColored: true,
+                                        donatorName: donatorName,
+                                        donationDate: new Date().toISOString()
+                                    })
+                                    .eq('id', buddhaId);
+
+                                if (error) {
+                                    throw error;
+                                }
+
+                                closeModal();
+                                showSuccessModal();
+                            } catch (error) {
+                                console.error('불상 업데이트 중 오류 발생 (임시):', error);
+                                modalContentDynamic.innerHTML = `
+                                    <h2>오류 발생</h2>
+                                    <p class="modal-message">불상 업데이트 중 오류가 발생했습니다. 다시 시도해주세요. 오류: ${error.message}</p>
+                                    <button class="donate-button close-modal-button">닫기</button>
+                                `;
+                                document.querySelector('.close-modal-button').addEventListener('click', closeModal);
+                                paymentModal.style.display = 'block';
+                            }
+                        });
+                    } else {
+                        modalContentDynamic.innerHTML = `
+                            <h2>이미 후원된 불상입니다</h2>
+                            <p class="modal-message">이 불상은 이미 <b>${buddha.donatorName}</b>님께서 밝혀주셨습니다. <br><br>다른 불상에 후원해 주세요.</p>
+                            <button class="donate-button close-modal-button">닫기</button>
+                        `;
+                        document.querySelector('.close-modal-button').addEventListener('click', closeModal);
+                    }
+                    paymentModal.style.display = 'block';
+                });
+                buddhaGrid.appendChild(buddhaItem);
+            });
+        } catch (error) {
+            console.error('불상 데이터를 불러오는 데 실패했습니다 (Supabase):', error);
+            buddhaGrid.innerHTML = '<p class="error-message">불상 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.</p>';
+        }
+    }
+
+    closeButton.addEventListener('click', closeModal);
+
+    window.addEventListener('click', (event) => {
+        if (event.target == paymentModal) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', fetchAndRenderBuddhas);
+</script>
+</body>
+</html>
